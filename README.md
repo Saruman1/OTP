@@ -369,3 +369,226 @@ generyczna → wspólny moduł (`my_server`)
 specyficzna → logika biznesowa (`kitty_server2`)
 
 W praktycznych projektach — używamy gen_server + supervisorów.
+
+### Krok 4 – prawdziwy gen_server: kitty_gen_server
+
+Plik: `kitty_gen_server.erl`
+
+```erl
+-module(kitty_gen_server).
+
+-behaviour(gen_server).
+
+%% API publiczne
+-export([start_link/0,
+         order_cat/3,
+         return_cat/1,
+         close_shop/0]).
+
+%% Callbacks gen_server
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+-record(cat, {name, color = green, description}).
+
+%%% ====================================================================
+%%%  API
+%%% ====================================================================
+
+%% Ten start_link będzie wywoływany przez supervisora
+start_link() ->
+    %% rejestrujemy proces pod nazwą ?MODULE = kitty_gen_server
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+%% Klient nie musi znać Pid – wystarczy nazwa modułu
+order_cat(Name, Color, Description) ->
+    gen_server:call(?MODULE, {order, Name, Color, Description}).
+
+return_cat(Cat = #cat{}) ->
+    gen_server:cast(?MODULE, {return, Cat}).
+
+close_shop() ->
+    gen_server:call(?MODULE, terminate).
+
+%%% ====================================================================
+%%%  Callbacks
+%%% ====================================================================
+
+%% Stan początkowy – lista kotów w „magazynie”
+init([]) ->
+    io:format("kitty_gen_server init~n", []),
+    {ok, []}.
+
+%% -------------------- handle_call/3 --------------------
+
+handle_call({order, Name, Color, Description}, _From, Cats) ->
+    case Cats of
+        [] ->
+            %% nie ma kotów na magazynie – tworzymy nowego
+            Cat = make_cat(Name, Color, Description),
+            {reply, Cat, Cats};
+        [Cat | Rest] ->
+            %% jest kot na magazynie – oddajemy tego, którego mamy
+            {reply, Cat, Rest}
+    end;
+
+handle_call(terminate, _From, Cats) ->
+    terminate_cats(Cats),
+    %% {stop, Reason, Reply, NewState}
+    {stop, normal, ok, Cats};
+
+handle_call(Unknown, _From, State) ->
+    io:format("Unknown call: ~p~n", [Unknown]),
+    {reply, {error, unknown_call}, State}.
+
+%% -------------------- handle_cast/2 --------------------
+
+handle_cast({return, Cat = #cat{}}, Cats) ->
+    {noreply, [Cat | Cats]};
+
+handle_cast(Unknown, State) ->
+    io:format("Unknown cast: ~p~n", [Unknown]),
+    {noreply, State}.
+
+%% -------------------- handle_info/2 --------------------
+
+handle_info(Msg, State) ->
+    io:format("Unhandled info: ~p~n", [Msg]),
+    {noreply, State}.
+
+%% -------------------- terminate/2 --------------------
+
+terminate(Reason, Cats) ->
+    io:format("kitty_gen_server terminating, reason=~p~n", [Reason]),
+    terminate_cats(Cats),
+    ok.
+
+%% -------------------- code_change/3 --------------------
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%% ====================================================================
+%%%  Funkcje prywatne
+%%% ====================================================================
+
+make_cat(Name, Col, Desc) ->
+    #cat{name = Name, color = Col, description = Desc}.
+
+terminate_cats(Cats) ->
+    [io:format("~p was set free.~n", [C#cat.name]) || C <- Cats].
+
+```
+
+```
+1> c(kitty_gen_server).
+{ok,kitty_gen_server}
+
+%% Ręczny start bez supervisora (na chwilę):
+2> kitty_gen_server:start_link().
+{ok,<0.90.0>}
+
+3> Cat1 = kitty_gen_server:order_cat(carl, brown, "loves fish").
+#cat{name = carl,color = brown,description = "loves fish"}
+
+4> kitty_gen_server:return_cat(Cat1).
+ok
+
+5> kitty_gen_server:order_cat(jimmy, orange, "cuddly").
+%% wróci carl z magazynu:
+#cat{name = carl,color = brown,description = "loves fish"}
+
+6> kitty_gen_server:close_shop().
+carl was set free.
+ok
+```
+
+Teraz robimy to samo, co w `kitty_server2`, ale używając prawdziwego `gen_server`.
+Widzimy, że API jest bardzo podobne, ale callbacki zwracają krotki `{reply, ...}`, `{noreply, ...}`, `{stop, ...}`, a całe zarządzanie procesem leży po stronie OTP.
+
+## Krok 5 – supervisor dla `kitty_gen_server`: `kitty_sup`
+Teraz chcemy wpiąć nasz serwer do drzewa supervisorów.
+
+Plik: `kitty_sup.erl`
+```erl
+-module(kitty_sup).
+
+-behaviour(supervisor).
+
+-export([start_link/0]).
+-export([init/1]).
+
+%%% ====================================================================
+%%%  API
+%%% ====================================================================
+
+start_link() ->
+    %% Rejestrujemy supervisora pod nazwą kitty_sup
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+%%% ====================================================================
+%%%  Callbacks supervisor
+%%% ====================================================================
+
+init([]) ->
+    %% Strategia restartu: one_for_one
+    SupFlags = {one_for_one,   % strategia
+                5,             % MaxRestarts
+                10},           % MaxSecondsBetweenRestarts
+
+    %% Specyfikacja dziecka (nasz gen_server)
+    ChildSpec =
+        {kitty_gen_server,                       % Id
+         {kitty_gen_server, start_link, []},     % {M, F, A}
+         permanent,                              % Restart
+         5000,                                   % Shutdown (ms)
+         worker,                                 % Typ
+         [kitty_gen_server]},                    % Moduły
+
+    {ok, {SupFlags, [ChildSpec]}}.
+
+```
+
+```
+1> c(kitty_gen_server).
+{ok,kitty_gen_server}
+2> c(kitty_sup).
+{ok,kitty_sup}
+
+%% Startujemy supervisora
+3> kitty_sup:start_link().
+{ok,<0.95.0>}
+
+%% Supervisor automatycznie startuje kitty_gen_server,
+%% zarejestrowany pod nazwą kitty_gen_server
+
+4> kitty_gen_server:order_cat(carl, brown, "from supervisor").
+#cat{name = carl,color = brown,description = "from supervisor"}
+```
+Automatyczny restart:
+```
+%% Sprawdzamy Pid procesu serwera
+5> whereis(kitty_gen_server).
+<0.97.0>
+
+%% Zabijamy go ręcznie:
+6> exit(whereis(kitty_gen_server), kill).
+true
+
+%% Sprawdzamy znowu:
+7> whereis(kitty_gen_server).
+<0.99.0>
+```
+Widzimy, że Pid się zmienił – stary proces został zabity,
+ale supervisor uruchomił nowy proces `kitty_gen_server`.
+To jest cała moc supervision tree: procesy mogą padać, a system się sam podnosi.
+
+Rowniez stan się zresetował:
+```
+8> Cat = kitty_gen_server:order_cat(x, black, "after restart").
+#cat{name = x,color = black,description = "after restart"}
+```
