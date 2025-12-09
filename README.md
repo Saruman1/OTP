@@ -199,6 +199,9 @@ To powtarzalna, generyczna część. Można ją przenieść do wspólnej bibliot
 
 ## Krok 2. Wyodrębnienie części wspólnej – `my_server`
 
+W kroku drugim wyciągamy wspólną, powtarzalną część logiki do osobnego modułu my_server.
+Ten moduł nie wie nic o kotach – jego zadanie to bycie **małym frameworkiem do serwerów**.
+
 Stworzymy moduł `my_server`, który:
 
 uruchamia proces,
