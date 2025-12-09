@@ -197,7 +197,7 @@ obsługujemy timeouty i błędy.
 
 To powtarzalna, generyczna część. Można ją przenieść do wspólnej biblioteki.
 
-Krok 2. Wyodrębnienie części wspólnej – `my_server`
+## Krok 2. Wyodrębnienie części wspólnej – `my_server`
 
 Stworzymy moduł `my_server`, który:
 
@@ -269,7 +269,7 @@ loop(Module, State) ->
             loop(Module, Module:handle_call(Msg, {Pid, Ref}, State))
     end.
 ```
-Krok 3. `kitty_server2` jako moduł callback
+## Krok 3. `kitty_server2` jako moduł callback
 
 Teraz serwer kotów staje się prosty i przejrzysty — zawiera tylko logikę domenową.
 
@@ -349,12 +349,12 @@ moduł callback implementuje:
 
 `code_change/3`
 
-Idea OTP:
+## Idea OTP:
 
 Oddzielić część generyczną (niezmienną) od części specyficznej (logika aplikacyjna).
 Dzięki temu kod jest stabilniejszy, prostszy i mniej podatny na błędy.
 
-Podsumowanie
+## Podsumowanie
 
 OTP to zestaw narzędzi upraszczających pisanie współbieżnych aplikacji w Erlangu.
 
@@ -362,7 +362,7 @@ Wzorzec serwera → powtarzalny → łatwo go ustandaryzować.
 
 `my_server` jest uproszczonym modelem `gen_server`.
 
-Rozdzielenie logiki:
+## Rozdzielenie logiki:
 
 generyczna → wspólny moduł (`my_server`)
 
