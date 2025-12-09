@@ -1,27 +1,46 @@
 # OTP w Erlang: krótkie wprowadzenie
 
+## Cel tego repozytorium
+
+To repozytorium zawiera prosty przykład serwera w Erlangu oraz jego stopniową refaktoryzację w kierunku wzorca, na którym opiera się **OTP `gen_server`**.
+
+Ten plik `README.md` pełni jednocześnie rolę:
+
+- krótkiego wprowadzenia teoretycznego,
+- dokumentacji kodu,
+- **scenariusza prezentacji (krok po kroku)** – na końcu znajdziesz dokładny plan, jak o tym opowiadać na slajdach / na żywo.
+
+---
+
 ## Czym jest OTP?
 
-**OTP (Open Telecom Platform)** to standardowe biblioteki i zestaw wzorców służących do budowania niezawodnych, współbieżnych i łatwych w utrzymaniu systemów w Erlangu.
+**OTP (Open Telecom Platform)** to standardowe biblioteki i zestaw wzorców, które pomagają budować:
+
+- współbieżne,
+- rozproszone,
+- odporne na błędy
+
+systemy w Erlangu.
 
 Najważniejsze idee:
 
-- Erlang ma bardzo lekkie i potężne procesy.
+- Erlang ma bardzo lekkie i tanie w utrzymaniu procesy.
 - Ale jeśli za każdym razem ręcznie piszemy:
   - `spawn`, `spawn_link`
-  - monitory oraz linki
+  - monitory (`erlang:monitor/2`), linki
   - pętle `receive`
-  - obsługę błędów i zakończenia procesu
+  - obsługę błędów, zakończenia procesu, timeouty
   – łatwo popełnić błąd.
 
-**OTP** dostarcza gotowych struktur (behaviours), które ukrywają całą tę powtarzalną logikę.  
-Najważniejszym z nich dla serwerów jest **`gen_server`**.
+**OTP** dostarcza gotowych **behaviours** (np. `gen_server`, `gen_statem`, `supervisor`), które ukrywają całą tę powtarzalną logikę.
 
-W tej prezentacji:
+Najważniejszy dla prostych serwerów jest **`gen_server`**.
 
-1. zobaczymy naiwny ręczny serwer,
-2. wyodrębnimy część wspólną do modułu `my_server`,
-3. zrozumiemy, skąd bierze się idea stojąca za `gen_server`.
+W tym repozytorium chcemy zrozumieć ideę:
+
+> najpierw napiszemy naiwne rozwiązanie,
+> potem wyciągniemy część wspólną do modułu `my_server`,
+> a na końcu zobaczymy, że to właśnie robi `gen_server`.
 
 ---
 
@@ -29,20 +48,27 @@ W tej prezentacji:
 
 Większość serwerów w Erlangu wygląda podobnie:
 
-1. **start/init** – uruchomienie procesu i ustawienie stanu początkowego,
-2. **loop(State)** – nieskończona pętla `receive`:
-   - odbieranie wiadomości,
-   - aktualizacja stanu,
-   - powrót do `loop(NewState)`,
-3. dodatkowa logika: monitory, timeouty, obsługa zakończenia itd.
+1. **start/init**
+   - uruchamiamy nowy proces (`spawn` / `spawn_link`),
+   - ustawiamy stan początkowy.
+2. **loop(State)**
+   - nieskończona pętla `receive`,
+   - odbieramy wiadomość,
+   - aktualizujemy stan,
+   - wywołujemy ponownie `loop(NewState)`.
+3. **dodatkowa logika**
+   - monitory,
+   - timeouty,
+   - obsługa zakończenia procesu,
+   - logowanie błędów itd.
 
-To schemat, który powtarza się w każdym serwerze — więc można go zautomatyzować.
+Ten wzorzec powtarza się **w każdej** implementacji serwera. To oznacza, że możemy go zautomatyzować i zamienić w bibliotekę.
 
 ---
 
-## Krok 1. Naiwny `kitty_server`
+## Krok 1. Naiwny `kitty_server` (bez OTP)
 
-Zbudujmy prosty sklep z kotami:
+Zbudujmy prosty **sklep z kotami**:
 
 - **wywołanie synchroniczne**: zamów kota (`order_cat/4`)
 - **wywołanie asynchroniczne**: zwróć kota (`return_cat/2`)
