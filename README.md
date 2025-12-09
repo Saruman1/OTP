@@ -221,7 +221,7 @@ wywołuje funkcje callback w module użytkownika:
 
 `handle_cast/2`.
 
-```
+```erlang
 -module(my_server).
 -export([start/2, start_link/2, call/2, cast/2, reply/2]).
 
@@ -273,7 +273,7 @@ loop(Module, State) ->
 
 Teraz serwer kotów staje się prosty i przejrzysty — zawiera tylko logikę domenową.
 
-```
+```erlang
 -module(kitty_server2).
 
 -export([start_link/0, order_cat/4, return_cat/2, close_shop/1]).
