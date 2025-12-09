@@ -273,67 +273,6 @@ loop(Module, State) ->
     end.
 ```
 
-```
-1> c(my_server).
-{ok,my_server}
-2> c(kitty_server2).
-{ok,kitty_server2}
-```
-
-```
-3> Pid = kitty_server2:start_link().
-<0.90.0>
-```
-Wywołuję `kitty_server2`:`start_link/0`.
-Pod spodem to tak naprawdę `my_server`:`start_link(?MODULE, [])`.
-Dzięki temu startuje nowy proces serwera, a jako callback używany jest moduł `kitty_server2`.
-Stan początkowy to pusta lista kotów.
-```
-4> Cat1 = kitty_server2:order_cat(Pid, carl, brown, "loves bridges").
-#cat{name = carl,color = brown,
-      description = "loves bridges"}
-```
-Wywołuję `order_cat/4`, które pod spodem robi `my_server`:`call(Pid, {order, ...})`.
-my_server wysyła wiadomość synchroniczną do serwera i czeka na odpowiedź.
-W `handle_call/3` widzimy, że jeśli lista kotów jest pusta, to tworzony jest nowy kot i zwracany do klienta.
-```
-5> kitty_server2:return_cat(Pid, Cat1).
-ok
-```
-Teraz wywołuję `return_cat/2`. To jest tylko `my_server`:`cast(Pid, {return, Cat})`.
-cast jest asynchroniczny: klient nie czeka na odpowiedź, tylko informuje serwer: ten kot wrócił do magazynu.
-W `handle_cast/2` logika jest prosta – dodajemy kota na początek listy.
-```
-
-6> Cat2 = kitty_server2:order_cat(Pid, jimmy, orange, "cuddly").
-#cat{name = carl,color = brown,
-      description = "loves bridges"}
-```
-Chociaż zamawiam kota `jimmy, orange, cuddly`, serwer oddaje mi `carl, brown, loves bridges`.
-Dlaczego?
-Bo logika w `handle_call/3` mówi: jeśli mamy kota na liście, to pierwszeństwo ma kot ze stanu magazynowego, a nie nowe zamówienie.
-To pokazuje, że stan (Cats) jest poprawnie przechowywany i modyfikowany w `my_server:loop/2`.
-```
-7> Cat3 = kitty_server2:order_cat(Pid, jimmy, orange, "cuddly").
-#cat{name = jimmy,color = orange,
-      description = "cuddly"}
-```
-Wcześniej zdjęliśmy jednego kota z listy, więc magazyn znowu jest pusty.
-Przy kolejnym zamówieniu serwer tworzy teraz nowego kota zgodnie z parametrami zamówienia.
-```
-8> kitty_server2:close_shop(Pid).
-carl was set free.
-ok
-```
-`close_shop/1` robi `my_server`:`call(Pid, terminate)`.
-W `handle_call(terminate, ...)` wysyłamy klientowi ok, a następnie wołamy `terminate/1`, które wypisuje imiona wszystkich kotów i kończy proces `exit(normal)`.
-```
-9> kitty_server2:order_cat(Pid, x, black, "after close").
-** exception error: no such process or port
-```
-Proces serwera już nie istnieje – sklep jest zamknięty, więc każde kolejne wywołanie na starym PID kończy się błędem.
-
-
 ## Krok 3. `kitty_server2` jako moduł callback
 
 Teraz serwer kotów staje się prosty i przejrzysty — zawiera tylko logikę domenową.
@@ -434,6 +373,66 @@ generyczna → wspólny moduł (`my_server`)
 specyficzna → logika biznesowa (`kitty_server2`)
 
 W praktycznych projektach — używamy gen_server + supervisorów.
+
+```
+1> c(my_server).
+{ok,my_server}
+2> c(kitty_server2).
+{ok,kitty_server2}
+```
+
+```
+3> Pid = kitty_server2:start_link().
+<0.90.0>
+```
+Wywołuję `kitty_server2`:`start_link/0`.
+Pod spodem to tak naprawdę `my_server`:`start_link(?MODULE, [])`.
+Dzięki temu startuje nowy proces serwera, a jako callback używany jest moduł `kitty_server2`.
+Stan początkowy to pusta lista kotów.
+```
+4> Cat1 = kitty_server2:order_cat(Pid, carl, brown, "loves bridges").
+#cat{name = carl,color = brown,
+      description = "loves bridges"}
+```
+Wywołuję `order_cat/4`, które pod spodem robi `my_server`:`call(Pid, {order, ...})`.
+my_server wysyła wiadomość synchroniczną do serwera i czeka na odpowiedź.
+W `handle_call/3` widzimy, że jeśli lista kotów jest pusta, to tworzony jest nowy kot i zwracany do klienta.
+```
+5> kitty_server2:return_cat(Pid, Cat1).
+ok
+```
+Teraz wywołuję `return_cat/2`. To jest tylko `my_server`:`cast(Pid, {return, Cat})`.
+cast jest asynchroniczny: klient nie czeka na odpowiedź, tylko informuje serwer: ten kot wrócił do magazynu.
+W `handle_cast/2` logika jest prosta – dodajemy kota na początek listy.
+```
+
+6> Cat2 = kitty_server2:order_cat(Pid, jimmy, orange, "cuddly").
+#cat{name = carl,color = brown,
+      description = "loves bridges"}
+```
+Chociaż zamawiam kota `jimmy, orange, cuddly`, serwer oddaje mi `carl, brown, loves bridges`.
+Dlaczego?
+Bo logika w `handle_call/3` mówi: jeśli mamy kota na liście, to pierwszeństwo ma kot ze stanu magazynowego, a nie nowe zamówienie.
+To pokazuje, że stan (Cats) jest poprawnie przechowywany i modyfikowany w `my_server:loop/2`.
+```
+7> Cat3 = kitty_server2:order_cat(Pid, jimmy, orange, "cuddly").
+#cat{name = jimmy,color = orange,
+      description = "cuddly"}
+```
+Wcześniej zdjęliśmy jednego kota z listy, więc magazyn znowu jest pusty.
+Przy kolejnym zamówieniu serwer tworzy teraz nowego kota zgodnie z parametrami zamówienia.
+```
+8> kitty_server2:close_shop(Pid).
+carl was set free.
+ok
+```
+`close_shop/1` robi `my_server`:`call(Pid, terminate)`.
+W `handle_call(terminate, ...)` wysyłamy klientowi ok, a następnie wołamy `terminate/1`, które wypisuje imiona wszystkich kotów i kończy proces `exit(normal)`.
+```
+9> kitty_server2:order_cat(Pid, x, black, "after close").
+** exception error: no such process or port
+```
+Proces serwera już nie istnieje – sklep jest zamknięty, więc każde kolejne wywołanie na starym PID kończy się błędem.
 
 ### Krok 4 – prawdziwy gen_server: kitty_gen_server
 
