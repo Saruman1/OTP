@@ -656,3 +656,185 @@ Rowniez stan się zresetował:
 8> Cat = kitty_gen_server:order_cat(x, black, "after restart").
 #cat{name = x,color = black,description = "after restart"}
 ```
+## Zadanie
+
+Napisz bardzo prosty serwer OTP, który przechowuje w swoim stanie jedną liczbę – licznik kliknięć.
+Klient może:
+
+zwiększyć licznik (`increment`),
+
+pobrać wartość licznika (`get`),
+
+zresetować licznik (`reset`),
+
+Serwer ma działać jako prawdziwy `gen_server` i musi być uruchamiany przez supervisora.
+
+
+## Rozwiazanie:
+
+`counter_server.erl`:
+```erl
+%% counter_server.erl
+%% Prosty gen_server, który przechowuje licznik (integer)
+
+-module(counter_server).
+
+-behaviour(gen_server).
+
+%% API
+-export([start_link/0,
+         get/0,
+         reset/0,
+         increment/0]).
+
+%% Callbacks gen_server
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+%%% ====================================================================
+%%%  API
+%%% ====================================================================
+
+%% Startowany przez supervisora, rejestrujemy proces pod nazwą counter_server
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, 0, []).
+
+%% Pobranie aktualnej wartości licznika (synchronicznie)
+get() ->
+    gen_server:call(?MODULE, get).
+
+%% Reset licznika do 0 (synchronicznie)
+reset() ->
+    gen_server:call(?MODULE, reset).
+
+%% Zwiększenie licznika o 1 (asynchronicznie)
+increment() ->
+    gen_server:cast(?MODULE, increment).
+
+%%% ====================================================================
+%%%  Callbacks gen_server
+%%% ====================================================================
+
+%% Stan początkowy – licznik ustawiony na 0
+init(InitialCount) ->
+    {ok, InitialCount}.
+
+%% ---------------- handle_call/3 ----------------
+
+handle_call(get, _From, State) ->
+    %% Zwracamy aktualną wartość licznika
+    {reply, State, State};
+
+handle_call(reset, _From, _State) ->
+    %% Ustawiamy licznik na 0, klient dostaje 'ok'
+    {reply, ok, 0};
+
+handle_call(Unknown, _From, State) ->
+    %% Obsługa nieznanych zapytań
+    {reply, {error, {unknown_call, Unknown}}, State}.
+
+%% ---------------- handle_cast/2 ----------------
+
+handle_cast(increment, State) ->
+    %% Zwiększamy licznik o 1, bez odpowiedzi dla klienta
+    {noreply, State + 1};
+
+handle_cast(_Unknown, State) ->
+    {noreply, State}.
+
+%% ---------------- handle_info/2 ----------------
+
+handle_info(_Msg, State) ->
+    %% Ignorujemy wszystkie inne wiadomości
+    {noreply, State}.
+
+%% ---------------- terminate/2 ----------------
+
+terminate(_Reason, _State) ->
+    ok.
+
+%% ---------------- code_change/3 ----------------
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+```
+
+`counter_sup.erl`:
+```erl
+%% counter_sup.erl
+%% Supervisor dla counter_server
+
+-module(counter_sup).
+
+-behaviour(supervisor).
+
+-export([start_link/0]).
+-export([init/1]).
+
+%%% ====================================================================
+%%%  API
+%%% ====================================================================
+
+start_link() ->
+    %% Rejestrujemy supervisora pod nazwą counter_sup
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+%%% ====================================================================
+%%%  Callback supervisor
+%%% ====================================================================
+
+init([]) ->
+    %% Strategia: one_for_one
+    SupFlags = {one_for_one, 5, 10},
+
+    %% Specyfikacja dziecka (nasz counter_server)
+    ChildSpec =
+        {counter_server,                  % Id
+         {counter_server, start_link, []},% {Moduł, Funkcja, Argumenty}
+         permanent,                      % Restart
+         5000,                           % Shutdown (ms)
+         worker,                         % Typ procesu
+         [counter_server]},              % Liste modułów
+
+    {ok, {SupFlags, [ChildSpec]}}.
+
+```
+
+```
+1> c(counter_server).
+{ok,counter_server}
+2> c(counter_sup).
+{ok,counter_sup}
+3> counter_sup:start_link().
+{ok,<0.90.0>}
+4> counter_server:get().
+0
+5> counter_server:increment().
+ok
+6> counter_server:increment().
+ok
+7> counter_server:increment().
+ok
+8> counter_server:get().
+3
+9> counter_server:reset().
+ok
+10> counter_server:get().
+0
+11> whereis(counter_server).
+<0.95.0>
+
+12> exit(whereis(counter_server), kill).
+true
+
+13> whereis(counter_server).
+<0.97.0>
+14> counter_server:get().
+0
+
+```
